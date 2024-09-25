@@ -1,44 +1,95 @@
-
 import sys
+#https://cryptography.io/en/latest/hazmat/primitives/symmetric-encryption/
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+#https://cryptography.io/en/latest/hazmat/primitives/padding/
+from cryptography.hazmat.primitives import padding
 
 def usage():
     print("aes-encrypt usage:")
     print("\tkey=<a file name containing 128-bit key as a hex string>")
-    print("\tIV<a file name containing IV as a hex string>")
+    print("\tiv<a file name containing IV as a hex string>")
     print("\tmode=ecb|cbc")
     print("\tin=<the input file name>")
     print("\tout=<the output file name>")
     print("aes-encrypt examples:")
-    print("\taes-encrypt.py key=file_key IV=iv_file mode=cbc in=input_file out=out_file")
+    print("\taes-encrypt.py key=file_key iv=iv_file mode=cbc in=input_file out=out_file")
     print("\taes-encrypt.py key=file_key mode=ecb in=input_file out=out_file")
 
+def read_file_in_bytes(file_path):
+    try:
+        with open(file_path, 'rb') as file:
+            return file.read()
+    except:
+        return None
+
+def write_file_in_bytes(file_path, data):
+    try:
+        with open(file_path, 'wb') as file:
+            file.write(data)
+    except:
+        return None
 
 
-arg_len = len(sys.argv)
-
-if arg_len < 5:
+if len(sys.argv) < 5:
     usage()
     exit(1)
-
 
 cmd_args = sys.argv
-key_filename = None
-iv_filename = None
+key = None
+iv = None
 mode = None
-in_filename = None
+in_data = None
 out_filename = None
 
-
-if "mode=cbc" in cmd_args and not any(arg[:3] == "IV=" for arg in cmd_args):
+if "mode=cbc" in cmd_args and not any(arg[:3] == "iv=" for arg in cmd_args):
     usage()
     exit(1)
 
+for i in range(1, len(sys.argv)):
+    if cmd_args[i][:4] == "key=":
+        key_hex = read_file_in_bytes(cmd_args[i][4:])
+        if key_hex is None:
+            usage()
+            exit(1)
+        key = bytes.fromhex(key_hex.decode().strip())
+    elif cmd_args[i][:3] == "iv=":
+        iv_hex = read_file_in_bytes(cmd_args[i][3:])
+        if iv_hex is None:
+            usage()
+            exit(1)
+        iv = bytes.fromhex(iv_hex.decode().strip())
+    elif cmd_args[i][:5] == "mode=":
+        mode = cmd_args[i][5:]
+        if mode != "ecb" and mode != "cbc":
+            usage()
+            exit(1)
+    elif cmd_args[i][:3] == "in=":
+        in_data = read_file_in_bytes(cmd_args[i][3:])
+        if in_data is None:
+            usage()
+            exit(1)
+    elif cmd_args[i][:4] == "out=":
+        out_filename = cmd_args[i][4:]
+        if out_filename is None:
+            usage()
+            exit(1)
 
+if mode not in ["ecb", "cbc"]:
+    usage()
+    exit(1)
 
+#pad
+padder = padding.PKCS7(algorithms.AES.block_size).padder()
+padded_data = padder.update(in_data) + padder.finalize()
 
+#encrypt
+if mode == "ecb":
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+elif mode == "cbc":
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
 
+encryptor = cipher.encryptor()
+encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
 
-for i in range(1, arg_len):
-    print(sys.argv[i], end=" ")
-
-print(arg_len)
+#write
+write_file_in_bytes(out_filename, encrypted_data)
