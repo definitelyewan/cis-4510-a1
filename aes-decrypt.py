@@ -3,18 +3,8 @@ import sys
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 #https://cryptography.io/en/latest/hazmat/primitives/padding/
 from cryptography.hazmat.primitives import padding
-
-def usage():
-    print("aes-decrypt usage:")
-    print("\tkey=<a file name containing 128-bit key as a hex string>")
-    print("\tiv<a file name containing IV as a hex string>")
-    print("\tmode=ecb|cbc|gcm")
-    print("\tin=<the input file name>")
-    print("\tout=<the output file name>")
-    print("\tgcm_args=<the name of a file, which contains a parameter for authentication>")
-    print("aes-decrypt examples:")
-    print("\taes-decrypt.py key=file_key iv=iv_file mode=cbc in=input_file out=out_file")
-    print("\taes-decrypt.py key=file_key mode=ecb in=input_file out=out_file")
+import argparse
+import binascii
 
 def read_file_in_bytes(file_path):
     try:
@@ -31,61 +21,53 @@ def write_file_in_bytes(file_path, data):
         return None
 
 if len(sys.argv) < 5:
-    usage()
     exit(1)
 
-cmd_args = sys.argv
-key = None
-iv = None
-mode = None
-in_data = None
-out_filename = None
-
-if "mode=cbc" in cmd_args and not any(arg[:3] == "iv=" for arg in cmd_args):
-    usage()
+if len(sys.argv) < 5:
     exit(1)
 
-if "mode=gcm" in cmd_args and not any(arg[:3] == "iv=" for arg in cmd_args) and not any(arg[:9] == "gcm_args=" for arg in cmd_args):
-    usage()
-    exit(1)
+parser = argparse.ArgumentParser(description='AES Encryption Script')
+parser.add_argument('-key')
+parser.add_argument('-IV')
+parser.add_argument('-mode')
+parser.add_argument('-in', dest='in_filename')
+parser.add_argument('-out')
+parser.add_argument('-gcm_arg')
 
-for i in range(1, len(sys.argv)):
-    if cmd_args[i][:4] == "key=":
-        key_hex = read_file_in_bytes(cmd_args[i][4:])
-        if key_hex is None:
-            usage()
-            exit(1)
-        key = bytes.fromhex(key_hex.decode().strip())
-    elif cmd_args[i][:3] == "iv=":
-        iv_hex = read_file_in_bytes(cmd_args[i][3:])
-        if iv_hex is None:
-            usage()
-            exit(1)
-        iv = bytes.fromhex(iv_hex.decode().strip())
-    elif cmd_args[i][:9] == "gcm_args=":
-        gcm_args = read_file_in_bytes(cmd_args[i][9:])
-        if gcm_args is None:
-            usage()
-            exit(1)
-    elif cmd_args[i][:5] == "mode=":
-        mode = cmd_args[i][5:]
-        if mode != "ecb" and mode != "cbc" and mode != "gcm":
-            usage()
-            exit(1)
-    elif cmd_args[i][:3] == "in=":
-        in_data = read_file_in_bytes(cmd_args[i][3:])
-        if in_data is None:
-            usage()
-            exit(1)
-    elif cmd_args[i][:4] == "out=":
-        out_filename = cmd_args[i][4:]
-        if out_filename is None:
-            usage()
-            exit(1)
+args = parser.parse_args()
+
+key = args.key
+iv = args.IV
+mode = args.mode
+in_filename = args.in_filename
+out_filename = args.out
+gcm_arg_file = args.gcm_arg
+gcm_arg = None
+tag = None
 
 if mode not in ["ecb", "cbc", "gcm"]:
-    usage()
     exit(1)
+
+if mode == "cbc" and iv is None:
+    exit(1)
+
+if mode == "gcm" and (iv is None or gcm_arg is None):
+    exit(1)
+
+
+key_data = read_file_in_bytes(key)
+key = binascii.unhexlify(key_data)
+
+if iv is not None:
+    iv_data = read_file_in_bytes(iv)
+    iv = binascii.unhexlify(iv_data)
+
+in_data = read_file_in_bytes(in_filename)
+
+if gcm_arg_file is not None:
+    gcm_data = read_file_in_bytes(gcm_arg_file)
+    gcm_arg = gcm_data.split(b'\n')[0]
+    tag = gcm_data.split(b'\n')[1]
 
 #decrypt
 cipher = None
@@ -96,15 +78,18 @@ if mode == "ecb":
 elif mode == "cbc":
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
 elif mode == "gcm":
-    cipher = Cipher(algorithms.AES(key), modes.GCM(iv, gcm_args, 16))
+    cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag))
 
 decryptor = cipher.decryptor()
-decrypted_data = decryptor.update(in_data) + decryptor.finalize()
+
 
 if mode in ["ecb", "cbc"]:
+    decrypted_data = decryptor.update(in_data) + decryptor.finalize()
     unpadder = padding.PKCS7(128).unpadder()
     unpadded_data = unpadder.update(decrypted_data) + unpadder.finalize()
     write_file_in_bytes(out_filename, unpadded_data)
 
 elif mode == "gcm":
+    decryptor.authenticate_additional_data(gcm_arg)
+    decrypted_data = decryptor.update(in_data) + decryptor.finalize()
     write_file_in_bytes(out_filename, decrypted_data)
