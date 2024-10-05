@@ -23,14 +23,11 @@ def write_file_in_bytes(file_path, data):
 if len(sys.argv) < 5:
     exit(1)
 
-if len(sys.argv) < 5:
-    exit(1)
-
 parser = argparse.ArgumentParser(description='AES Encryption Script')
 parser.add_argument('-key')
 parser.add_argument('-IV')
 parser.add_argument('-mode')
-parser.add_argument('-in', dest='in_filename')
+parser.add_argument('-input', dest='in_filename')
 parser.add_argument('-out')
 parser.add_argument('-gcm_arg')
 
@@ -51,9 +48,9 @@ if mode not in ["ecb", "cbc", "gcm"]:
 if mode == "cbc" and iv is None:
     exit(1)
 
-if mode == "gcm" and (iv is None or gcm_arg is None):
+if mode == "gcm" and (iv is None and gcm_arg is None):
     exit(1)
-
+print("here")
 
 key_data = read_file_in_bytes(key)
 key = binascii.unhexlify(key_data)
@@ -65,19 +62,20 @@ if iv is not None:
 in_data = read_file_in_bytes(in_filename)
 
 if gcm_arg_file is not None:
-    gcm_data = read_file_in_bytes(gcm_arg_file)
-    gcm_arg = gcm_data.split(b'\n')[0]
-    tag = gcm_data.split(b'\n')[1]
+    gcm_arg = read_file_in_bytes(gcm_arg_file)
 
 #decrypt
 cipher = None
 encrypted_data = None
+tag = None
 
 if mode == "ecb":
     cipher = Cipher(algorithms.AES(key), modes.ECB())
 elif mode == "cbc":
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
 elif mode == "gcm":
+    tag = in_data[-16:]
+    print(f"{tag.hex()}")
     cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag))
 
 decryptor = cipher.decryptor()
@@ -90,6 +88,7 @@ if mode in ["ecb", "cbc"]:
     write_file_in_bytes(out_filename, unpadded_data)
 
 elif mode == "gcm":
+    encrypted_data = in_data[:-16]
     decryptor.authenticate_additional_data(gcm_arg)
-    decrypted_data = decryptor.update(in_data) + decryptor.finalize()
+    decrypted_data = decryptor.update(encrypted_data) + decryptor.finalize()
     write_file_in_bytes(out_filename, decrypted_data)

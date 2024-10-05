@@ -78,16 +78,14 @@ if mode in ["ecb", "cbc"]:
     padder = padding.PKCS7(128).padder()
     padded_data = padder.update(in_data) + padder.finalize()
     encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
+
+    write_file_in_bytes(out_filename, encrypted_data)
+
 elif mode == "gcm":
     encryptor.authenticate_additional_data(gcm_arg)
     encrypted_data = encryptor.update(in_data) + encryptor.finalize()
     tag = encryptor.tag
 
-# Write encrypted data
-write_file_in_bytes(out_filename, encrypted_data)
+    write_file_in_bytes(out_filename, encrypted_data + tag)
 
-# Write GCM tag if applicable
-if mode == "gcm":
-    file_data = gcm_arg + b"\n" + tag
-    print(file_data)
-    write_file_in_bytes(gcm_arg_file, tag)
+# Write encrypted data
