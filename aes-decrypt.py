@@ -50,7 +50,6 @@ if mode == "cbc" and iv is None:
 
 if mode == "gcm" and (iv is None and gcm_arg is None):
     exit(1)
-print("here")
 
 key_data = read_file_in_bytes(key)
 key = binascii.unhexlify(key_data)
@@ -75,7 +74,6 @@ elif mode == "cbc":
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
 elif mode == "gcm":
     tag = in_data[-16:]
-    print(f"{tag.hex()}")
     cipher = Cipher(algorithms.AES(key), modes.GCM(iv, tag))
 
 decryptor = cipher.decryptor()
